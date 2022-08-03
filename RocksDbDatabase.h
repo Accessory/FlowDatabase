@@ -77,8 +77,8 @@ public:
       LOG_WARNING << "Failed to put value: " << value << "into key: " << key;
   }
 
-  void Put(const std::string &key, const std::string &value,
-           const std::string &columnFamily) {
+  void Put(const std::string &columnFamily, const std::string &key,
+           const std::string &value) {
     rocksdb::ColumnFamilyHandle *cfh = getColumnFamily(columnFamily);
     rocksdb::Status s = db->Put(rocksdb::WriteOptions(), cfh, key, value);
     if (!s.ok())
@@ -177,12 +177,17 @@ public:
   std::vector<std::string> GetAllValues(const std::string &columnFamily) {
     std::vector<std::string> rtn;
     rocksdb::ColumnFamilyHandle *cfh = getColumnFamily(columnFamily);
-    std::unique_ptr<rocksdb::Iterator> itr(db->NewIterator(rocksdb::ReadOptions(), cfh));
+    std::unique_ptr<rocksdb::Iterator> itr(
+        db->NewIterator(rocksdb::ReadOptions(), cfh));
     for (itr->SeekToFirst(); itr->Valid(); itr->Next()) {
       if (!itr->value().empty())
         rtn.emplace_back(itr->value().ToString());
     }
     return rtn;
+  }
+
+  void CreateColumnFamilyIfNotExists(const std::string &name) {
+    getColumnFamily(name);
   }
 
 private:

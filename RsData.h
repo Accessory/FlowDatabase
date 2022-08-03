@@ -18,6 +18,8 @@ public:
 
     size_t rowSize() const;
 
+    bool isEmpty() const;
+
     std::vector<std::string> toStringVector(const std::string &key) const;
 
     std::vector<std::string> getColumnNames() const;
