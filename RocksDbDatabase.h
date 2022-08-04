@@ -25,27 +25,32 @@ public:
         LOG_WARNING << "Could not establish RocksDB connection!";
         return;
       }
-    } else {
-      std::vector<rocksdb::ColumnFamilyDescriptor> columnFamilyDescriptors;
-      for (auto &name : column_families_names) {
-        columnFamilyDescriptors.emplace_back(name,
-                                             rocksdb::ColumnFamilyOptions());
-      }
 
-      std::vector<rocksdb::ColumnFamilyHandle *> handles;
-      rocksdb::DB *tmp;
-      rocksdb::Status s = rocksdb::DB::Open(
-          options, path, columnFamilyDescriptors, &handles, &tmp);
-      db = std::unique_ptr<rocksdb::DB>(tmp);
-      if (!s.ok()) {
-        LOG_WARNING << "Could not establish RocksDB connection!";
-        return;
-      }
-      for (size_t i = 0; i < column_families_names.size(); ++i) {
-        columnFamilyHandleMap.insert(
-            make_pair(column_families_names.at(i), handles.at(i)));
-      }
+      db->Close();
+      db = nullptr;
+      rocksdb::DB::ListColumnFamilies(options, path, &column_families_names);
     }
+    // else {
+    std::vector<rocksdb::ColumnFamilyDescriptor> columnFamilyDescriptors;
+    for (auto &name : column_families_names) {
+      columnFamilyDescriptors.emplace_back(name,
+                                           rocksdb::ColumnFamilyOptions());
+    }
+
+    std::vector<rocksdb::ColumnFamilyHandle *> handles;
+    rocksdb::DB *tmp;
+    rocksdb::Status s = rocksdb::DB::Open(
+        options, path, columnFamilyDescriptors, &handles, &tmp);
+    db = std::unique_ptr<rocksdb::DB>(tmp);
+    if (!s.ok()) {
+      LOG_WARNING << "Could not establish RocksDB connection!";
+      return;
+    }
+    for (size_t i = 0; i < column_families_names.size(); ++i) {
+      columnFamilyHandleMap.insert(
+          make_pair(column_families_names.at(i), handles.at(i)));
+    }
+    // }
     isOpen = true;
     LOG_TRACE << "Opened DB: " << path;
   }
@@ -75,6 +80,15 @@ public:
     rocksdb::Status s = db->Put(rocksdb::WriteOptions(), key, value);
     if (!s.ok())
       LOG_WARNING << "Failed to put value: " << value << "into key: " << key;
+  }
+
+  void DeleteKey(const std::string &key) {
+    db->Delete(rocksdb::WriteOptions(), key);
+  }
+
+  void DeleteKey(const std::string &columnFamily, const std::string &key) {
+    rocksdb::ColumnFamilyHandle *cfh = getColumnFamily(columnFamily);
+    db->Delete(rocksdb::WriteOptions(), cfh, key);
   }
 
   void Put(const std::string &columnFamily, const std::string &key,
@@ -188,6 +202,19 @@ public:
 
   void CreateColumnFamilyIfNotExists(const std::string &name) {
     getColumnFamily(name);
+  }
+
+  bool DeleteColumnFamily(const std::string &name) {
+    std::lock_guard<std::mutex> guard(dbm);
+    auto itr = columnFamilyHandleMap.find(name);
+    if (itr == columnFamilyHandleMap.end()) {
+      return false;
+    }
+
+    db->DropColumnFamily(itr->second);
+    db->DestroyColumnFamilyHandle(itr->second);
+    columnFamilyHandleMap.erase(itr);
+    return true;
   }
 
 private:
